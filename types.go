@@ -41,10 +41,26 @@ const (
 )
 
 const (
+	PayoutStatusPending   = "PENDING"
+	PayoutStatusSucceeded = "SUCCEEDED"
+	PayoutStatusFailed    = "FAILED"
+)
+
+// Payout-only fail reasons. FailReasonWalletNotFound is shared with charges.
+const (
+	FailReasonInsufficientMerchantBalance = "INSUFFICIENT_MERCHANT_BALANCE"
+	FailReasonRecipientIneligible         = "RECIPIENT_INELIGIBLE"
+)
+
+const (
 	EventChargePaid     = "charge.paid"
 	EventChargeFailed   = "charge.failed"
 	EventChargeExpired  = "charge.expired"
 	EventChargeRefunded = "charge.refunded"
+
+	EventPayoutCreated   = "payout.created"
+	EventPayoutSucceeded = "payout.succeeded"
+	EventPayoutFailed    = "payout.failed"
 )
 
 type Charge struct {
@@ -104,6 +120,53 @@ type ChargeList struct {
 	HasMore bool     `json:"has_more"`
 }
 
+// Payout is money sent from your wallet to a customer's.
+//
+// Status is one of PayoutStatusSucceeded, PayoutStatusFailed, or
+// PayoutStatusPending — and pending is not "queued": it means the wallet's
+// answer was lost, so the money may or may not have moved. It resolves on its
+// own and a payout.succeeded or payout.failed webhook reports the outcome.
+// Never send a replacement payout for a pending one.
+type Payout struct {
+	ID             string `json:"id"`
+	RecipientPhone string `json:"recipient_phone"`
+	RecipientName  string `json:"recipient_name"`
+	Currency       string `json:"currency"`
+	Amount         string `json:"amount"`
+	// Fee is charged on top of Amount: your wallet is debited Amount + Fee.
+	Fee        string `json:"fee"`
+	Status     string `json:"status"`
+	FailReason string `json:"fail_reason"`
+	Reference  string `json:"reference"`
+	// Metadata values may be any JSON type, unlike a charge's string map.
+	Metadata    map[string]any `json:"metadata"`
+	Livemode    bool           `json:"livemode"`
+	CreatedAt   time.Time      `json:"created_at"`
+	CompletedAt *time.Time     `json:"completed_at"`
+}
+
+type CreatePayoutParams struct {
+	Amount   string `json:"amount"`
+	Currency string `json:"currency"`
+	// RecipientPhone is the customer's wallet number. There is no recipient
+	// name field: the name is resolved from the wallet and returned.
+	RecipientPhone string         `json:"recipient_phone"`
+	Reference      string         `json:"reference,omitempty"`
+	Metadata       map[string]any `json:"metadata,omitempty"`
+}
+
+type ListPayoutsParams struct {
+	Limit         int
+	StartingAfter string
+	Status        string
+	Currency      string
+}
+
+type PayoutList struct {
+	Payouts []Payout `json:"payouts"`
+	HasMore bool     `json:"has_more"`
+}
+
 type CreateRefundParams struct {
 	Amount      string `json:"amount,omitempty"`
 	Reason      string `json:"reason,omitempty"`
@@ -123,8 +186,16 @@ type Event struct {
 	Data       EventData `json:"data"`
 }
 
+// EventData carries the object an event is about. Object says which: "charge"
+// on charge.* events, "payout" on payout.* ones.
+//
+// Charge stays a value rather than a pointer so existing code keeps compiling;
+// on a payout event it is simply the zero Charge. Branch on Object (or on the
+// event Type) rather than testing a field for emptiness.
 type EventData struct {
 	Object string  `json:"object"`
 	Charge Charge  `json:"charge"`
 	Refund *Refund `json:"refund"`
+	// Payout is set only on payout.* events.
+	Payout *Payout `json:"payout"`
 }

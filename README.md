@@ -113,6 +113,39 @@ refunds, err := client.Refunds.List(ctx, "ch_3kQ8xR2mVn7pLdYt")
 
 Leave `Amount` empty to refund everything still refundable. Refund lists are not paginated.
 
+## Payouts
+
+Sends money from your wallet to a customer's — payroll, marketplace settlements, rewards.
+
+```go
+payout, err := client.Payouts.Create(ctx, "payroll-2026-06-emp-4471", wishop.CreatePayoutParams{
+	Amount:         "150.00",
+	Currency:       "HTG",
+	RecipientPhone: "+50931234567",
+	Reference:      "June payroll",
+})
+
+payouts, err := client.Payouts.List(ctx, wishop.ListPayoutsParams{Status: wishop.PayoutStatusFailed})
+one, err := client.Payouts.Retrieve(ctx, "po_7Hn2vB9xQm4tRkLw")
+```
+
+The idempotency key is a **required parameter**, not an option: a payout pushes money out, so an un-keyed retry after a dropped connection is indistinguishable from a second payment. Your wallet is debited `Amount + Fee`.
+
+Three outcomes, and the middle one is the one to handle:
+
+```go
+switch payout.Status {
+case wishop.PayoutStatusSucceeded:
+	// The money moved.
+case wishop.PayoutStatusPending:
+	// The wallet's answer was lost — the money may or may not have moved.
+	// It resolves on its own and a webhook reports the outcome.
+	// Never send a replacement; retry with the SAME key if you must.
+}
+```
+
+A declined payout returns an `*UnprocessableError` and still records a `FAILED` payout you can `Retrieve` — unlike a rejected refund, which leaves nothing behind.
+
 ## Money
 
 Amounts are strings, never numbers, and every field that holds money is a string: `Amount`, `Fee`, `Net`, `CustomerDebitAmount`, `AmountRefunded`. Parse them with a decimal type, never a float.
@@ -131,7 +164,9 @@ key := fmt.Sprintf("charge-%s-%d", order.ID, order.PaymentAttempt)
 charge, err := client.Charges.Create(ctx, params, wishop.WithIdempotencyKey(key))
 ```
 
-Nothing is sent unless you pass it. Derive the key from the payment *attempt*, not the order — reusing an order id replays the previous failure instead of creating the charge a retrying customer needs. Keys are remembered for 24 hours.
+On charges and refunds nothing is sent unless you pass it. **Payouts are the exception: the key is a required parameter** and the API rejects a payout without one.
+
+Derive a charge key from the payment *attempt*, not the order — reusing an order id replays the previous failure instead of creating the charge a retrying customer needs. Derive a payout key the opposite way, from the payment itself, and reuse it across retries: a fresh key on a payout retry sends a second payment. Keys are remembered for 24 hours.
 
 ## Errors
 
@@ -158,11 +193,11 @@ case err != nil:
 | `ValidationError` | 400 | Malformed body, invalid amount or currency, metadata over the limits |
 | `AuthenticationError` | 401 | Missing, malformed, unknown, or revoked key |
 | `PermissionError` | 403 | Live key from an address that is not whitelisted |
-| `NotFoundError` | 404 | No charge or refund with that id in this mode |
-| `ConflictError` | 409 | Idempotency key still in flight, or charge no longer payable |
+| `NotFoundError` | 404 | No charge, refund or payout with that id in this mode; or no wallet for a payout recipient's phone |
+| `ConflictError` | 409 | Idempotency key still in flight, charge no longer payable, or wallet not provisioned for live payouts |
 | `ChargeExpiredError` | 410 | Charge expired |
 | `PayloadTooLargeError` | 413 | Upload too large |
-| `UnprocessableError` | 422 | Currency not enabled, charge not refundable, refund exceeds remaining, wallet declined |
+| `UnprocessableError` | 422 | Currency not enabled, charge not refundable, refund exceeds remaining, wallet declined, or a payout declined for balance or recipient |
 | `RateLimitError` | 429 | Rate limit exceeded; carries `RetryAfter` |
 | `APIError` | 5xx and anything unmapped | Failure on the gateway side |
 
@@ -171,6 +206,8 @@ All of them satisfy the `wishop.Error` interface, so `errors.As(err, &wishopErr)
 `Message()` is prose and its wording can change — branch on the type or the status code, never on the text.
 
 The client does not retry. `ConflictError`, `RateLimitError`, and `APIError` are safe to retry with backoff and the same idempotency key; nothing else is.
+
+A 422 on a payout is the one error that leaves state behind: the payout is recorded as `FAILED` and readable with `Payouts.Retrieve`.
 
 ## Payment failures
 
@@ -242,7 +279,7 @@ Delivery is at-least-once, so deduplicate on the `X-Webhook-Id` header, which is
 
 ## Testing
 
-Test mode uses `sk_test_` keys against the same host. The payment outcome is chosen by the phone number the customer enters — see [test phone numbers](https://docs.wishop.com/testing/test-phone-numbers).
+Test mode uses `sk_test_` keys against the same host. The outcome is chosen by a phone number — the one the customer enters for a charge, the recipient's for a payout. The two use different tables; `+50900000006` is how you exercise a pending payout. See [test phone numbers](https://docs.wishop.com/testing/test-phone-numbers).
 
 To test your own code against this client, point it at a local server:
 
@@ -252,7 +289,7 @@ client := wishop.New("sk_test_key", wishop.WithBaseURL(server.URL))
 
 ## Reference
 
-Field-by-field documentation for the charge, refund, and event objects lives at [docs.wishop.com](https://docs.wishop.com).
+Field-by-field documentation for the charge, refund, payout, and event objects lives at [docs.wishop.com](https://docs.wishop.com).
 
 ## License
 

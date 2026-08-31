@@ -7,7 +7,7 @@ import (
 )
 
 const (
-	Version        = "1.0.0"
+	Version        = "1.1.0"
 	defaultBaseURL = "https://api.wishop.com"
 	defaultTimeout = 30 * time.Second
 )
@@ -15,6 +15,7 @@ const (
 type Client struct {
 	Charges *ChargeService
 	Refunds *RefundService
+	Payouts *PayoutService
 
 	apiKey     string
 	baseURL    string
@@ -52,6 +53,7 @@ func New(apiKey string, opts ...Option) *Client {
 
 	c.Charges = &ChargeService{client: c}
 	c.Refunds = &RefundService{client: c}
+	c.Payouts = &PayoutService{client: c}
 
 	return c
 }

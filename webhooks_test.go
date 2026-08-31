@@ -129,3 +129,43 @@ func TestConstructEventRejectsMalformedHeaders(t *testing.T) {
 		})
 	}
 }
+
+const payoutEventPayload = `{"id":"evt_6Lm4pT8vRw2nKxQd","type":"payout.succeeded","api_version":"2026-08-01","created_at":"2026-08-31T12:04:12.006Z","livemode":true,"data":{"object":"payout","payout":{"id":"po_7Hn2vB9xQm4tRkLw","recipient_phone":"+50931234567","currency":"HTG","amount":"150.00","fee":"3.00","status":"SUCCEEDED"}}}`
+
+// A payout event carries no charge. Parsing must succeed and expose the payout
+// rather than failing or silently producing a half-built charge.
+func TestConstructEventParsesPayoutEvent(t *testing.T) {
+	now := frozen()
+	header := fmt.Sprintf("t=%d,v1=%s", now.Unix(), sign(t, "whsec_test", now, payoutEventPayload))
+
+	event, err := ConstructEvent([]byte(payoutEventPayload), header, "whsec_test", withClock(frozen))
+	if err != nil {
+		t.Fatalf("expected verification to succeed, got %v", err)
+	}
+
+	if event.Type != EventPayoutSucceeded {
+		t.Errorf("event type = %q, want %q", event.Type, EventPayoutSucceeded)
+	}
+
+	if event.Data.Object != "payout" {
+		t.Errorf("data.object = %q, want payout", event.Data.Object)
+	}
+
+	if event.Data.Payout == nil {
+		t.Fatal("expected the payout to be present on a payout.succeeded event")
+	}
+
+	if event.Data.Payout.ID != "po_7Hn2vB9xQm4tRkLw" || event.Data.Payout.Fee != "3.00" {
+		t.Errorf("payout = %+v", event.Data.Payout)
+	}
+
+	if event.Data.Payout.Status != PayoutStatusSucceeded {
+		t.Errorf("payout status = %q", event.Data.Payout.Status)
+	}
+
+	// The charge is the zero value on a payout event; branch on Object, never
+	// on a charge field being non-empty.
+	if event.Data.Charge.ID != "" {
+		t.Errorf("charge should be zero on a payout event, got %+v", event.Data.Charge)
+	}
+}
