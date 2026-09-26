@@ -1,6 +1,6 @@
 # Wishop Go
 
-The official Go client for the [Wishop API](https://docs.wishop.com).
+The official Go client for the [Wishop API](https://developers.wishopht.com).
 
 Create charges, send customers to a hosted checkout page, refund them, and verify webhooks. Standard library only — no dependencies.
 
@@ -63,7 +63,7 @@ client := wishop.New(
 | --- | --- | --- |
 | `WithTimeout` | 30s | Applied as a context deadline on every request |
 | `WithHTTPClient` | `http.DefaultClient` | For proxies, custom transports, or connection tuning |
-| `WithBaseURL` | `https://api.wishop.com` | For pointing at a mock server in your own tests |
+| `WithBaseURL` | `https://gatewayapi.wishopht.com` | For pointing at a mock server in your own tests |
 
 Test and live mode are selected by the key, not by configuration. A `sk_test_` key reaches test data; a `sk_live_` key reaches live data.
 
@@ -279,7 +279,7 @@ Delivery is at-least-once, so deduplicate on the `X-Webhook-Id` header, which is
 
 ## Testing
 
-Test mode uses `sk_test_` keys against the same host. The outcome is chosen by a phone number — the one the customer enters for a charge, the recipient's for a payout. The two use different tables; `+50900000006` is how you exercise a pending payout. See [test phone numbers](https://docs.wishop.com/testing/test-phone-numbers).
+Test mode uses `sk_test_` keys against the same host. The outcome is chosen by a phone number — the one the customer enters for a charge, the recipient's for a payout. The two use different tables; `+50900000006` is how you exercise a pending payout. See [test phone numbers](https://developers.wishopht.com/testing/test-phone-numbers).
 
 To test your own code against this client, point it at a local server:
 
@@ -289,7 +289,7 @@ client := wishop.New("sk_test_key", wishop.WithBaseURL(server.URL))
 
 ## Reference
 
-Field-by-field documentation for the charge, refund, payout, and event objects lives at [docs.wishop.com](https://docs.wishop.com).
+Field-by-field documentation for the charge, refund, payout, and event objects lives at [developers.wishopht.com](https://developers.wishopht.com).
 
 ## License
 

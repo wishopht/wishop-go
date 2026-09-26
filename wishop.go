@@ -8,7 +8,7 @@ import (
 
 const (
 	Version        = "1.1.0"
-	defaultBaseURL = "https://api.wishop.com"
+	defaultBaseURL = "https://gatewayapi.wishopht.com"
 	defaultTimeout = 30 * time.Second
 )
 

@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-const chargeJSON = `{"id":"ch_3kQ8xR2mVn7pLdYt","order_id":"order_1042","description":"Two large coffees","currency":"HTG","amount":"1500.00","fee_bearer":"merchant","fee":"45.00","net":"1455.00","customer_debit_amount":"1500.00","amount_refunded":"0.00","customer_phone_masked":null,"status":"INITIATED","fail_reason":null,"return_url":"https://yourstore.com/orders/1042/complete","metadata":{"cart_id":"c_88213"},"livemode":false,"expires_at":"2026-08-12T15:30:00.000Z","confirmed_at":null,"created_at":"2026-08-12T15:00:00.000Z","pay_url":"https://pay.wishop.com/pay/9f2c7a1e"}`
+const chargeJSON = `{"id":"ch_3kQ8xR2mVn7pLdYt","order_id":"order_1042","description":"Two large coffees","currency":"HTG","amount":"1500.00","fee_bearer":"merchant","fee":"45.00","net":"1455.00","customer_debit_amount":"1500.00","amount_refunded":"0.00","customer_phone_masked":null,"status":"INITIATED","fail_reason":null,"return_url":"https://yourstore.com/orders/1042/complete","metadata":{"cart_id":"c_88213"},"livemode":false,"expires_at":"2026-08-12T15:30:00.000Z","confirmed_at":null,"created_at":"2026-08-12T15:00:00.000Z","pay_url":"https://gatewayapi.wishopht.com/pay/9f2c7a1e"}`
 
 func testClient(t *testing.T, handler http.HandlerFunc) *Client {
 	t.Helper()
