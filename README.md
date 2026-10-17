@@ -34,7 +34,7 @@ func main() {
 		OrderID:     "order_1042",
 		Description: "Two large coffees",
 		ReturnURL:   "https://yourstore.com/orders/1042/complete",
-		Metadata:    map[string]string{"cart_id": "c_88213"},
+		Metadata:    map[string]any{"cart_id": "c_88213"},
 	})
 	if err != nil {
 		log.Fatal(err)

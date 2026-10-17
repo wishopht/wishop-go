@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.2.0
+
+- `Charge.Channel` (`ChargeChannelAPI` / `ChargeChannelApp`). Charges started by
+  a customer in the WiShop app are returned by the API and carried by webhooks;
+  the field was previously dropped.
+- Fixed: charge `Metadata` is now `map[string]any`. The API accepts any JSON
+  value, and a charge or webhook whose metadata held a number or boolean failed
+  to decode into `map[string]string`. Code that reads `Metadata` values as
+  strings needs a type assertion, and `CreateChargeParams.Metadata` takes
+  `map[string]any`.
+
 ## 1.1.0
 
 Payouts — send money from your wallet to a customer's.

@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-const chargeJSON = `{"id":"ch_3kQ8xR2mVn7pLdYt","order_id":"order_1042","description":"Two large coffees","currency":"HTG","amount":"1500.00","fee_bearer":"merchant","fee":"45.00","net":"1455.00","customer_debit_amount":"1500.00","amount_refunded":"0.00","customer_phone_masked":null,"status":"INITIATED","fail_reason":null,"return_url":"https://yourstore.com/orders/1042/complete","metadata":{"cart_id":"c_88213"},"livemode":false,"expires_at":"2026-08-12T15:30:00.000Z","confirmed_at":null,"created_at":"2026-08-12T15:00:00.000Z","pay_url":"https://gatewayapi.wishopht.com/pay/9f2c7a1e"}`
+const chargeJSON = `{"id":"ch_3kQ8xR2mVn7pLdYt","order_id":"order_1042","description":"Two large coffees","currency":"HTG","amount":"1500.00","fee_bearer":"merchant","fee":"45.00","net":"1455.00","customer_debit_amount":"1500.00","amount_refunded":"0.00","customer_phone_masked":null,"channel":"app","status":"INITIATED","fail_reason":null,"return_url":"https://yourstore.com/orders/1042/complete","metadata":{"cart_id":"c_88213"},"livemode":false,"expires_at":"2026-08-12T15:30:00.000Z","confirmed_at":null,"created_at":"2026-08-12T15:00:00.000Z","pay_url":"https://gatewayapi.wishopht.com/pay/9f2c7a1e"}`
 
 func testClient(t *testing.T, handler http.HandlerFunc) *Client {
 	t.Helper()
@@ -50,7 +50,7 @@ func TestCreateChargeSendsRequestAndUnwrapsEnvelope(t *testing.T) {
 		Amount:   "1500.00",
 		Currency: "HTG",
 		OrderID:  "order_1042",
-		Metadata: map[string]string{"cart_id": "c_88213"},
+		Metadata: map[string]any{"cart_id": "c_88213"},
 	}, WithIdempotencyKey("order-1042-attempt-1"))
 	if err != nil {
 		t.Fatalf("create failed: %v", err)
@@ -309,5 +309,24 @@ func TestTimeoutIsApplied(t *testing.T) {
 
 	if _, err := client.Charges.Retrieve(context.Background(), "ch_3kQ8xR2mVn7pLdYt"); err == nil {
 		t.Fatal("expected the request to time out")
+	}
+}
+
+func TestChargeExposesChannelAndNonStringMetadata(t *testing.T) {
+	client := testClient(t, func(w http.ResponseWriter, r *http.Request) {
+		io.WriteString(w, `{"status_code":200,"success":true,"message":"ok","data":{"id":"ch_1","channel":"app","metadata":{"seats":4,"vip":true,"note":"x"}}}`)
+	})
+
+	charge, err := client.Charges.Retrieve(context.Background(), "ch_1")
+	if err != nil {
+		t.Fatalf("a charge with non-string metadata must decode: %v", err)
+	}
+
+	if charge.Channel != ChargeChannelApp {
+		t.Errorf("channel = %q", charge.Channel)
+	}
+
+	if charge.Metadata["seats"] != float64(4) || charge.Metadata["vip"] != true || charge.Metadata["note"] != "x" {
+		t.Errorf("metadata = %v", charge.Metadata)
 	}
 }

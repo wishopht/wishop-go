@@ -22,6 +22,14 @@ const (
 	FailReasonInternalError       = "INTERNAL_ERROR"
 )
 
+// ChargeChannel says where a charge came from: API charges are created by you
+// and paid through hosted checkout; app charges are started by a customer in
+// the WiShop app with your pay code.
+const (
+	ChargeChannelAPI = "api"
+	ChargeChannelApp = "app"
+)
+
 const (
 	FeeBearerMerchant = "merchant"
 	FeeBearerCustomer = "customer"
@@ -64,26 +72,28 @@ const (
 )
 
 type Charge struct {
-	ID                  string            `json:"id"`
-	OrderID             string            `json:"order_id"`
-	Description         string            `json:"description"`
-	Currency            string            `json:"currency"`
-	Amount              string            `json:"amount"`
-	FeeBearer           string            `json:"fee_bearer"`
-	Fee                 string            `json:"fee"`
-	Net                 string            `json:"net"`
-	CustomerDebitAmount string            `json:"customer_debit_amount"`
-	AmountRefunded      string            `json:"amount_refunded"`
-	CustomerPhoneMasked string            `json:"customer_phone_masked"`
-	Status              string            `json:"status"`
-	FailReason          string            `json:"fail_reason"`
-	ReturnURL           string            `json:"return_url"`
-	Metadata            map[string]string `json:"metadata"`
-	Livemode            bool              `json:"livemode"`
-	ExpiresAt           time.Time         `json:"expires_at"`
-	ConfirmedAt         time.Time         `json:"confirmed_at"`
-	CreatedAt           time.Time         `json:"created_at"`
-	PayURL              string            `json:"pay_url"`
+	ID                  string `json:"id"`
+	OrderID             string `json:"order_id"`
+	Description         string `json:"description"`
+	Currency            string `json:"currency"`
+	Amount              string `json:"amount"`
+	FeeBearer           string `json:"fee_bearer"`
+	Fee                 string `json:"fee"`
+	Net                 string `json:"net"`
+	CustomerDebitAmount string `json:"customer_debit_amount"`
+	AmountRefunded      string `json:"amount_refunded"`
+	CustomerPhoneMasked string `json:"customer_phone_masked"`
+	Channel             string `json:"channel"`
+	Status              string `json:"status"`
+	FailReason          string `json:"fail_reason"`
+	ReturnURL           string `json:"return_url"`
+	// Metadata values may be any JSON type; the API does not restrict them to strings.
+	Metadata    map[string]any `json:"metadata"`
+	Livemode    bool           `json:"livemode"`
+	ExpiresAt   time.Time      `json:"expires_at"`
+	ConfirmedAt time.Time      `json:"confirmed_at"`
+	CreatedAt   time.Time      `json:"created_at"`
+	PayURL      string         `json:"pay_url"`
 }
 
 type Refund struct {
@@ -99,13 +109,13 @@ type Refund struct {
 }
 
 type CreateChargeParams struct {
-	Amount      string            `json:"amount"`
-	Currency    string            `json:"currency"`
-	OrderID     string            `json:"order_id,omitempty"`
-	Description string            `json:"description,omitempty"`
-	FeeBearer   string            `json:"fee_bearer,omitempty"`
-	ReturnURL   string            `json:"return_url,omitempty"`
-	Metadata    map[string]string `json:"metadata,omitempty"`
+	Amount      string         `json:"amount"`
+	Currency    string         `json:"currency"`
+	OrderID     string         `json:"order_id,omitempty"`
+	Description string         `json:"description,omitempty"`
+	FeeBearer   string         `json:"fee_bearer,omitempty"`
+	ReturnURL   string         `json:"return_url,omitempty"`
+	Metadata    map[string]any `json:"metadata,omitempty"`
 }
 
 type ListChargesParams struct {
