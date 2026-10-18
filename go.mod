@@ -1,3 +1,3 @@
-module github.com/wishop/wishop-go
+module github.com/wishopht/wishop-go
 
 go 1.21

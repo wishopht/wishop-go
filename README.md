@@ -7,7 +7,7 @@ Create charges, send customers to a hosted checkout page, refund them, and verif
 ## Install
 
 ```bash
-go get github.com/wishop/wishop-go
+go get github.com/wishopht/wishop-go
 ```
 
 Requires Go 1.21 or later.
@@ -22,7 +22,7 @@ import (
 	"log"
 	"os"
 
-	"github.com/wishop/wishop-go"
+	"github.com/wishopht/wishop-go"
 )
 
 func main() {
