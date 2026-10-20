@@ -1,8 +1,8 @@
 # Wishop Go
 
-The official Go client for the [Wishop API](https://developers.wishopht.com).
+Go client for the [Wishop API](https://developers.wishopht.com).
 
-Create charges, send customers to a hosted checkout page, refund them, and verify webhooks. Standard library only — no dependencies.
+Use it to create charges, send customers to the hosted checkout page, issue refunds and payouts, and verify webhooks. It only uses the standard library.
 
 ## Install
 
@@ -44,9 +44,9 @@ func main() {
 }
 ```
 
-Send the customer to `charge.PayURL`. It is returned on create only, so persist it with the order.
+Redirect the customer to `charge.PayURL`. The API only returns it when the charge is created, so save it with the order.
 
-When the payment reaches a terminal state, Wishop sends a webhook and returns the customer to your `ReturnURL`. Confirm the outcome from the webhook or by retrieving the charge — never from the redirect alone.
+When the payment finishes, Wishop sends you a webhook and redirects the customer to your `ReturnURL`. Use the webhook, or retrieve the charge, to confirm the result. Don't rely on the redirect alone.
 
 ## Configuration
 
@@ -61,13 +61,13 @@ client := wishop.New(
 
 | Option | Default | Notes |
 | --- | --- | --- |
-| `WithTimeout` | 30s | Applied as a context deadline on every request |
+| `WithTimeout` | 30s | Set as a context deadline on every request |
 | `WithHTTPClient` | `http.DefaultClient` | For proxies, custom transports, or connection tuning |
-| `WithBaseURL` | `https://gatewayapi.wishopht.com` | For pointing at a mock server in your own tests |
+| `WithBaseURL` | `https://gatewayapi.wishopht.com` | Change it to point at a mock server in your tests |
 
-Test and live mode are selected by the key, not by configuration. A `sk_test_` key reaches test data; a `sk_live_` key reaches live data.
+The key decides the mode. A `sk_test_` key uses test data and a `sk_live_` key uses live data.
 
-Every method takes a `context.Context` first, so cancellation and deadlines from your request propagate.
+Every method takes a `context.Context` as its first argument, so cancellations and deadlines from your own request carry through.
 
 ## Charges
 
@@ -77,7 +77,7 @@ charge, err := client.Charges.Retrieve(ctx, "ch_3kQ8xR2mVn7pLdYt")
 list, err := client.Charges.List(ctx, wishop.ListChargesParams{Status: wishop.ChargeStatusPaid})
 ```
 
-`List` returns one page. Pass the id of the last charge as `StartingAfter` while `HasMore` is true:
+`List` returns one page at a time. To get the next page, pass the id of the last charge as `StartingAfter`, and stop when `HasMore` is false:
 
 ```go
 params := wishop.ListChargesParams{Limit: 100, Status: wishop.ChargeStatusPaid}
@@ -100,6 +100,8 @@ for {
 }
 ```
 
+Set `Query` to search by charge id or order id. It is sent as the API's `q` parameter.
+
 ## Refunds
 
 ```go
@@ -111,11 +113,11 @@ refund, err := client.Refunds.Create(ctx, "ch_3kQ8xR2mVn7pLdYt", wishop.CreateRe
 refunds, err := client.Refunds.List(ctx, "ch_3kQ8xR2mVn7pLdYt")
 ```
 
-Leave `Amount` empty to refund everything still refundable. Refund lists are not paginated.
+Leave `Amount` empty to refund whatever is left on the charge. Refund lists are not paginated.
 
 ## Payouts
 
-Sends money from your wallet to a customer's — payroll, marketplace settlements, rewards.
+A payout sends money from your wallet to a customer's wallet, for example for payroll, marketplace settlements or rewards.
 
 ```go
 payout, err := client.Payouts.Create(ctx, "payroll-2026-06-emp-4471", wishop.CreatePayoutParams{
@@ -129,26 +131,26 @@ payouts, err := client.Payouts.List(ctx, wishop.ListPayoutsParams{Status: wishop
 one, err := client.Payouts.Retrieve(ctx, "po_7Hn2vB9xQm4tRkLw")
 ```
 
-The idempotency key is a **required parameter**, not an option: a payout pushes money out, so an un-keyed retry after a dropped connection is indistinguishable from a second payment. Your wallet is debited `Amount + Fee`.
+The idempotency key is the second argument of `Payouts.Create`, not an option, because payouts require one. Without it, retrying after a dropped connection could send the money twice. Your wallet is debited `Amount + Fee`.
 
-Three outcomes, and the middle one is the one to handle:
+A payout comes back with one of three statuses. Make sure your code handles `PayoutStatusPending`:
 
 ```go
 switch payout.Status {
 case wishop.PayoutStatusSucceeded:
-	// The money moved.
+	// The money was sent.
 case wishop.PayoutStatusPending:
-	// The wallet's answer was lost — the money may or may not have moved.
-	// It resolves on its own and a webhook reports the outcome.
-	// Never send a replacement; retry with the SAME key if you must.
+	// We didn't get a final answer from the wallet, so the money may or may not have moved.
+	// It settles on its own and a webhook tells you the result.
+	// Don't create a new payout. If you retry, use the same key.
 }
 ```
 
-A declined payout returns an `*UnprocessableError` and still records a `FAILED` payout you can `Retrieve` — unlike a rejected refund, which leaves nothing behind.
+If the payout is declined, `Create` returns an `*UnprocessableError`, but the payout is still saved as `FAILED` and you can `Retrieve` it. A rejected refund is not saved.
 
 ## Money
 
-Amounts are strings, never numbers, and every field that holds money is a string: `Amount`, `Fee`, `Net`, `CustomerDebitAmount`, `AmountRefunded`. Parse them with a decimal type, never a float.
+Every money field is a string: `Amount`, `Fee`, `Net`, `CustomerDebitAmount`, `AmountRefunded`. Parse them with a decimal type, not `float64`.
 
 ```go
 amount, err := decimal.NewFromString(charge.Amount)
@@ -156,7 +158,7 @@ amount, err := decimal.NewFromString(charge.Amount)
 
 ## Idempotency
 
-Pass a key on charge and refund creation so a retry after a timeout cannot charge twice:
+Pass an idempotency key when creating charges and refunds, so retrying after a timeout can't charge the customer twice:
 
 ```go
 key := fmt.Sprintf("charge-%s-%d", order.ID, order.PaymentAttempt)
@@ -164,13 +166,13 @@ key := fmt.Sprintf("charge-%s-%d", order.ID, order.PaymentAttempt)
 charge, err := client.Charges.Create(ctx, params, wishop.WithIdempotencyKey(key))
 ```
 
-On charges and refunds nothing is sent unless you pass it. **Payouts are the exception: the key is a required parameter** and the API rejects a payout without one.
+For charges and refunds the key is optional. For payouts it is a required argument, and the API rejects a payout sent with an empty key.
 
-Derive a charge key from the payment *attempt*, not the order — reusing an order id replays the previous failure instead of creating the charge a retrying customer needs. Derive a payout key the opposite way, from the payment itself, and reuse it across retries: a fresh key on a payout retry sends a second payment. Keys are remembered for 24 hours.
+Build a charge key from the payment attempt, not just the order. If you reuse the order id, a customer who tries again gets the earlier failed charge back instead of a new one. For payouts, do the opposite: build the key from the payout itself and reuse it on every retry, because a new key creates a second payout. Keys expire after 24 hours.
 
 ## Errors
 
-Every failure is a typed error. Use `errors.As`:
+Every failure returns a typed error. Check it with `errors.As`:
 
 ```go
 charge, err := client.Charges.Create(ctx, params)
@@ -190,28 +192,26 @@ case err != nil:
 
 | Type | Status | Cause |
 | --- | --- | --- |
-| `ValidationError` | 400 | Malformed body, invalid amount or currency, metadata over the limits |
+| `ValidationError` | 400 | Malformed body, invalid amount or currency, or metadata over the limits |
 | `AuthenticationError` | 401 | Missing, malformed, unknown, or revoked key |
-| `PermissionError` | 403 | Live key from an address that is not whitelisted |
-| `NotFoundError` | 404 | No charge, refund or payout with that id in this mode; or no wallet for a payout recipient's phone |
-| `ConflictError` | 409 | Idempotency key still in flight, charge no longer payable, or wallet not provisioned for live payouts |
-| `ChargeExpiredError` | 410 | Charge expired |
-| `PayloadTooLargeError` | 413 | Upload too large |
-| `UnprocessableError` | 422 | Currency not enabled, charge not refundable, refund exceeds remaining, wallet declined, or a payout declined for balance or recipient |
-| `RateLimitError` | 429 | Rate limit exceeded; carries `RetryAfter` |
-| `APIError` | 5xx and anything unmapped | Failure on the gateway side |
+| `PermissionError` | 403 | Live key used from an IP address that is not whitelisted |
+| `NotFoundError` | 404 | No charge, refund or payout with that id in this mode, or no wallet for the payout recipient's phone |
+| `ConflictError` | 409 | A request with the same idempotency key is still running, the charge can no longer be paid, or your wallet is not set up for live payouts |
+| `ChargeExpiredError` | 410 | The charge has expired |
+| `PayloadTooLargeError` | 413 | Request body too large |
+| `UnprocessableError` | 422 | Currency not enabled, charge not refundable, refund larger than what is left, wallet declined, or payout declined for balance or recipient |
+| `RateLimitError` | 429 | Too many requests. `RetryAfter` gives the wait |
+| `APIError` | 5xx or anything else | Server error on Wishop's side |
 
-All of them satisfy the `wishop.Error` interface, so `errors.As(err, &wishopErr)` catches any of them and gives you `StatusCode()` and `Message()`.
+They all implement the `wishop.Error` interface, so `errors.As(err, &wishopErr)` matches any of them and gives you `StatusCode()` and `Message()`.
 
-`Message()` is prose and its wording can change — branch on the type or the status code, never on the text.
+The wording of `Message()` can change. Check the error type or the status code in your code, not the message text.
 
-The client does not retry. `ConflictError`, `RateLimitError`, and `APIError` are safe to retry with backoff and the same idempotency key; nothing else is.
-
-A 422 on a payout is the one error that leaves state behind: the payout is recorded as `FAILED` and readable with `Payouts.Retrieve`.
+The client never retries on its own. You can retry `ConflictError`, `RateLimitError` and `APIError` with backoff, using the same idempotency key. Don't retry the others.
 
 ## Payment failures
 
-A failed payment is not an error — the call succeeded, the payment didn't. Read `Status` and `FailReason`:
+A failed payment doesn't return an error. The API call worked; the customer's payment did not. Check `Status` and `FailReason`:
 
 ```go
 if charge.Status == wishop.ChargeStatusFailed {
@@ -221,20 +221,20 @@ if charge.Status == wishop.ChargeStatusFailed {
 
 | `FailReason` | Meaning |
 | --- | --- |
-| `INSUFFICIENT_FUNDS` | Wallet balance did not cover the payment |
-| `PIN_LOCKED` | Wallet locked after repeated incorrect PINs |
-| `OTP_EXPIRED` | One-time code expired before use |
-| `OTP_ATTEMPTS_EXCEEDED` | Too many incorrect one-time codes |
+| `INSUFFICIENT_FUNDS` | Not enough money in the wallet |
+| `PIN_LOCKED` | Wallet locked after too many wrong PINs |
+| `OTP_EXPIRED` | The one-time code expired |
+| `OTP_ATTEMPTS_EXCEEDED` | Too many wrong one-time codes |
 | `WALLET_NOT_FOUND` | No wallet for that phone number |
-| `DECLINED` | Wallet refused the payment |
-| `TIMEOUT` | Confirmation timed out |
-| `INTERNAL_ERROR` | Failure on our side |
+| `DECLINED` | The wallet declined the payment |
+| `TIMEOUT` | The customer didn't confirm in time |
+| `INTERNAL_ERROR` | Something failed on Wishop's side |
 
-Keep a default branch — new reasons can be added, and `FailReason` is a plain string so an unknown value arrives intact rather than failing to decode.
+Always have a `default` case for reasons you don't recognise, because new ones may be added. `FailReason` is a plain string, so an unknown value still decodes.
 
 ## Webhooks
 
-Verification needs the body **exactly as received**. Read it before anything parses it:
+Verify the signature against the raw request body. Read the bytes before anything parses them:
 
 ```go
 func handler(w http.ResponseWriter, r *http.Request) {
@@ -259,29 +259,33 @@ func handler(w http.ResponseWriter, r *http.Request) {
 		releaseStock(event.Data.Charge)
 	case wishop.EventChargeRefunded:
 		recordRefund(*event.Data.Refund)
+	case wishop.EventPayoutSucceeded:
+		markPayoutSent(*event.Data.Payout)
+	case wishop.EventPayoutFailed:
+		markPayoutFailed(*event.Data.Payout)
 	}
 
 	w.WriteHeader(http.StatusOK)
 }
 ```
 
-Re-serializing parsed JSON changes whitespace and key order, and the signature will not match. Use the raw bytes.
+Don't decode the JSON and encode it again before verifying. That changes the bytes, and the signature won't match.
 
-`ConstructEvent` rejects a stale timestamp, an altered body, and a signature that does not match. It accepts a match on any `v1` value, which is what keeps events flowing during a secret rotation. The default tolerance is 300 seconds:
+`ConstructEvent` returns an error if the timestamp is too old, the body was changed, or the signature doesn't match. A header can carry several `v1` signatures and one match is enough, so events keep arriving while you rotate your secret. Timestamps up to 300 seconds old are accepted by default. To change that:
 
 ```go
 event, err := wishop.ConstructEvent(payload, signature, secret, wishop.WithTolerance(60*time.Second))
 ```
 
-Delivery is at-least-once, so deduplicate on the `X-Webhook-Id` header, which is stable across retries. Record it in the same transaction as the work it triggers. Respond `2xx` once the event is durably recorded and queue anything slow — you have about ten seconds per attempt.
+The same event can arrive more than once, so check the `X-Webhook-Id` header, which stays the same on every retry. Save it in the same database transaction as the work the event triggers. Reply with `2xx` as soon as you have saved the event, and do slow work in the background. Each delivery attempt times out after about ten seconds.
 
-`Data.Refund` is set only on `charge.refunded`. A partial refund leaves the charge `PAID`; read `AmountRefunded`.
+`Data.Refund` is only set on `charge.refunded`, and `Data.Payout` only on `payout.*` events. `Data.Object` tells you which kind of event you have. After a partial refund the charge stays `PAID`; read `AmountRefunded` to see how much was returned.
 
 ## Testing
 
-Test mode uses `sk_test_` keys against the same host. The outcome is chosen by a phone number — the one the customer enters for a charge, the recipient's for a payout. The two use different tables; `+50900000006` is how you exercise a pending payout. See [test phone numbers](https://developers.wishopht.com/testing/test-phone-numbers).
+Test mode uses `sk_test_` keys on the same API host. The phone number decides what happens: the customer's number for a charge, the recipient's for a payout. Charges and payouts use different test numbers; `+50900000006` gives you a pending payout. See [test phone numbers](https://developers.wishopht.com/testing/test-phone-numbers).
 
-To test your own code against this client, point it at a local server:
+To test your own code without calling Wishop, point the client at a local server:
 
 ```go
 client := wishop.New("sk_test_key", wishop.WithBaseURL(server.URL))
@@ -289,7 +293,7 @@ client := wishop.New("sk_test_key", wishop.WithBaseURL(server.URL))
 
 ## Reference
 
-Field-by-field documentation for the charge, refund, payout, and event objects lives at [developers.wishopht.com](https://developers.wishopht.com).
+Every field on charges, refunds, payouts and events is documented at [developers.wishopht.com](https://developers.wishopht.com).
 
 ## License
 
